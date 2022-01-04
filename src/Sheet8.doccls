@@ -1,0 +1,21 @@
+﻿Private Sub Worksheet_Change(ByVal Target As Range)
+    ' handle category color preview
+    If Not Intersect(Target, Range("config_categoryColorCode")) Is Nothing Then
+        For Each ccell In Range("config_categoryColorCode")
+            If IsEmpty(ccell) Then
+                ccell.Offset(, 1).FormatConditions.Delete
+            Else
+                Dim cellVal As String
+                ccellval = ccell.Text
+                With ccell.Offset(, 1).FormatConditions
+                    .Delete
+                    With .Add(xlExpression, , "=isRGBColorString(" & enquoteStr(ccellval) & ")") ' safe guard
+                        .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                        .StopIfTrue = True
+                    End With
+                End With
+            End If
+        Next ccell
+    End If
+End Sub
+

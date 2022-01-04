@@ -1,0 +1,461 @@
+﻿Sub buildReportBtn_click()
+    With Worksheets("Report")
+        Dim range_reportTableAnchor As Range
+        Set range_reportTableAnchor = Range("A16")
+        If Not IsEmpty(range_reportTableAnchor) Or isTableExists("List_ReportTable", ActiveSheet) Then
+            ' report already exists
+            MsgBox "Report already exists. Please clear report first", vbOKOnly + vbCritical, "Error"
+            Exit Sub
+        End If
+        ' check if has student
+        Dim i_reportTableRowCount As Integer
+        i_reportTableRowCount = Worksheets("StudentList").Range("cell_studentCount").Value
+        If i_reportTableRowCount = 0 Then
+            MsgBox "No student available. Please ensure that at least one student has availability Yes", vbOKOnly + vbCritical, "Error"
+            Exit Sub
+        End If
+        ' validate user request
+        Dim range_workNameAnchor As Range
+        Set range_workNameAnchor = Range("B9")
+        Dim i_requestCount As Integer
+        i_requestCount = WorksheetFunction.Min(getRowDataLen(range_workNameAnchor), _
+                                               getRowDataLen(range_workNameAnchor.Offset(1)))
+        If i_requestCount = 0 Then
+            MsgBox "No properly specified work found. Please fill in the work names in B9 and the weights in B10", vbOKOnly + vbCritical, "Error"
+            Exit Sub
+        End If
+        Dim i_loopIdx As Integer
+        For i_loopIdx = 1 To i_requestCount
+            If Not isSheetExist(range_workNameAnchor.Offset(, i_loopIdx - 1).Value) Then
+                MsgBox range_workNameAnchor.Offset(, i_loopIdx - 1).Value & " is not a valid sheet name", vbOKOnly + vbCritical, "Error"
+                Exit Sub
+            End If
+        Next i_loopIdx
+        Dim s_workNameFormula_absolute As String
+        s_workNameFormula_absolute = "'Report'!" & range_workNameAnchor.Address & ":'Report'!" & range_workNameAnchor.Offset(, i_requestCount - 1).Address
+        Dim range_reportRepeatCount As Range
+        Set range_reportRepeatCount = Worksheets("__InternalData").Range("J9")
+        range_reportRepeatCount.Formula = "=SUM(--(FREQUENCY(MATCH(" & s_workNameFormula_absolute & ", " & _
+                                                                   s_workNameFormula_absolute & ", " & _
+                                                                   "0), " & _
+                                                             "ROWS(" & s_workNameFormula_absolute & ")) > 0))=" & i_requestCount
+        range_reportRepeatCount.Calculate
+        If Not range_reportRepeatCount.Value Then
+            MsgBox "Specified range contains duplicate workname", vbOKOnly + vbCritical, "Error"
+            Exit Sub
+        End If
+        Dim d_totalWeight As Double
+        d_totalWeight = WorksheetFunction.Sum(Range(range_workNameAnchor.Offset(1), _
+                                                    range_workNameAnchor.Offset(1, i_requestCount - 1)))
+        If d_totalWeight = 0 Then
+            MsgBox "Total weight cannot be zero", vbOKOnly + vbCritical, "Error"
+            Exit Sub
+        End If
+        Dim s_totalWeightRangeFormula As String
+        s_totalWeightRangeFormula = _
+            range_workNameAnchor.Offset(1).Address(1, 1) & ":" & _
+            range_workNameAnchor.Offset(1, i_requestCount - 1).Address(1, 1)
+        Dim s_totalWeightRangeFormula_absolute As String
+        s_totalWeightRangeFormula_absolute = _
+            enquoteStr("Report", False) & "!" & range_workNameAnchor.Offset(1).Address(1, 1) & ":" & _
+            enquoteStr("Report", False) & "!" & range_workNameAnchor.Offset(1, i_requestCount - 1).Address(1, 1)
+        
+        ' user input parsing
+        Dim ws_config As Worksheet
+        Set ws_config = Worksheets("Config")
+        Dim i_reportTableColumnCount As Integer
+        ' studentInfo (2) + workCount * itemPerWork + missingCount (1) + finalCount (0-3)
+        i_reportTableColumnCount = 2 + _
+           i_requestCount * ((-ws_config.Range("config_scoreInReport").Value) + _
+                             (-ws_config.Range("config_percentageInReport").Value) + _
+                             (-ws_config.Range("config_ZScoreInReport").Value)) + _
+           1 + _
+           ((-ws_config.Range("config_finalPercentageInReport").Value) + _
+            (-ws_config.Range("config_finalZScoreInReport").Value) + _
+            (-ws_config.Range("config_finalRankingInReport").Value))
+        
+        ' internal table writing, record id, work score, total
+        Dim ws_internalReport As Worksheet
+        Set ws_internalReport = Worksheets("__InternalReportTable")
+        If isTableExists("__List_internalReportTable", ws_internalReport) Then
+            ws_internalReport.ListObjects("__List_internalReportTable").Delete
+        End If
+        Dim lst_internalDataTable As ListObject
+        Set lst_internalDataTable = ws_internalReport.ListObjects.Add( _
+                xlSrcRange, _
+                ws_internalReport.Range(ws_internalReport.Cells(8, 1), _
+                                        ws_internalReport.Cells(7 + i_reportTableRowCount, _
+                                                                1 + i_requestCount + 1)))
+        Dim lst_studentList As ListObject
+        Set lst_studentList = Worksheets("StudentList").ListObjects("List_StudentList")
+        Dim s_workName As String
+        Dim s_workTableName As String
+        With lst_internalDataTable
+            .Name = "__List_internalReportTable"
+            ' get student id
+            .HeaderRowRange.Item(1).Value = "Student ID"
+            If .ListRows.Count = 0 Then
+                .ListRows.Add
+            End If
+            With .ListColumns(1).Range
+                With .Offset(1).Resize(.Count - 1)
+                    .NumberFormat = "@"
+                End With
+            End With
+            i_loopIdx = 1
+            For Each lstrow_studentRow In lst_studentList.ListRows
+                If LCase(lstrow_studentRow.Range(6)) = "yes" Then
+                    .ListRows(i_loopIdx).Range(1).Value = lstrow_studentRow.Range(4).Value
+                    i_loopIdx = i_loopIdx + 1
+                End If
+            Next lstrow_studentRow
+            ' get work score
+            For i_loopIdx = 1 To i_requestCount
+                s_workName = range_workNameAnchor.Offset(, i_loopIdx - 1).Value
+                .HeaderRowRange.Item(1 + i_loopIdx).Value = s_workName
+                s_workTableName = getTableNameFromWorkName(s_workName)
+                With .ListColumns(1 + i_loopIdx).Range
+                    .Offset(1).Resize(.Count - 1).Formula = "=" & _
+                        "IFERROR(" & getIndexMatchFormula(s_workTableName & "[Final grade]", _
+                                                          "[@[Student ID]]", _
+                                                          s_workTableName & "[Student ID]") & _
+                                 ", " & _
+                                 enquoteStr("Missing") & ")"
+                End With
+                ws_internalReport.Cells(7, 1 + i_loopIdx).Formula = "=" & s_workName & "!$C$8"
+            Next i_loopIdx
+            ' weighted total
+            Dim s_internalScoresRange As String
+            s_internalScoresRange = "[@[" & lst_internalDataTable.HeaderRowRange.Item(2).Value & "]]" & _
+                                    ":" & _
+                                    "[@[" & lst_internalDataTable.HeaderRowRange.Item(1 + i_requestCount).Value & "]]"
+            .HeaderRowRange.Item(2 + i_requestCount).Value = "total score"
+            With .ListColumns(2 + i_requestCount).Range
+                .Offset(1).Resize(.Count - 1).Formula = "=" & _
+                    "SUMPRODUCT(" & s_totalWeightRangeFormula_absolute & ", " & _
+                                s_internalScoresRange & ", " & _
+                                "1 / (" & Cells(7, 2).Address & ":" & Cells(7, 1 + i_requestCount).Address & ")" & _
+                                ")" & _
+                    " / " & _
+                    "SUM(" & s_totalWeightRangeFormula_absolute & ")"
+            End With
+        End With
+        
+        ' table building
+        Dim lst_reportTable As ListObject
+        Set lst_reportTable = .ListObjects.Add(xlSrcRange, _
+            Range(range_reportTableAnchor, _
+                  range_reportTableAnchor.Offset(i_reportTableRowCount - 1, _
+                                                 i_reportTableColumnCount - 1)))
+        Dim i_categoryIdx As Integer
+        Dim ccellval As String
+        Dim bcellval As String
+        With lst_reportTable
+            .Name = "List_ReportTable"
+            If .ListRows.Count = 0 Then
+                .ListRows.Add
+            End If
+            ' student info
+            With .HeaderRowRange
+                .Item(1).Value = "Student ID"
+                .Item(2).Value = "Full name"
+            End With
+            With .ListColumns(1).Range
+                With .Offset(1).Resize(.Count - 1)
+                    .NumberFormat = "@"
+                End With
+            End With
+            .DataBodyRange.Columns(1).Value = lst_internalDataTable.DataBodyRange.Columns(1).Value
+            .DataBodyRange.Columns(2).Formula = "=" & getIndexMatchFormula("List_StudentList[Full Name]", _
+                                                                           "[@[Student ID]]", _
+                                                                           "List_StudentList[Student ID]")
+            ' work data
+            Dim i_writeColIdx As Integer
+            i_writeColIdx = 3
+            Dim s_workScoreFormula As String
+            For i_loopIdx = 1 To i_requestCount
+                s_workName = lst_internalDataTable.HeaderRowRange.Item(i_loopIdx + 1).Value
+                s_workTableName = getTableNameFromWorkName(s_workName)
+                s_workScoreFormula = getIndexMatchFormula("__List_internalReportTable[" & s_workName & "]", _
+                                                          "[@[Student ID]]", _
+                                                          "__List_internalReportTable[Student ID]")
+                If ws_config.Range("config_scoreInReport").Value Then
+                    .HeaderRowRange.Item(i_writeColIdx).Value = s_workName & " score"
+                    With .ListColumns(i_writeColIdx).Range
+                        With .Offset(1).Resize(.Count - 1)
+                            .Formula = "=" & s_workScoreFormula
+                            .NumberFormat = "General"
+                            If ws_config.Range("config_colorReport").Value Then
+                                With .FormatConditions
+                                    .Delete
+                                    .Add(xlBlanksCondition).StopIfTrue = True
+                                    ' missing
+                                    ccellval = ws_config.Range("config_categoryColorCode").Item(6).Value
+                                    If Len(ccellval) <> 0 Then
+                                        With .Add(xlCellValue, xlEqual, "Missing")
+                                            .StopIfTrue = True
+                                            .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                        End With
+                                    End If
+                                End With
+                            End If
+                        End With
+                    End With
+                    i_writeColIdx = i_writeColIdx + 1
+                End If
+                If ws_config.Range("config_percentageInReport").Value Then
+                    .HeaderRowRange.Item(i_writeColIdx).Value = s_workName & " percentage"
+                    With .ListColumns(i_writeColIdx).Range
+                        With .Offset(1).Resize(.Count - 1)
+                            .Formula = "=" & _
+                                "IFERROR(" & s_workScoreFormula & " / " & s_workName & "!$C$8" & _
+                                         ", " & _
+                                         enquoteStr("/") & ")"
+                            .NumberFormat = "0.00%"
+                            If ws_config.Range("config_colorReport").Value Then
+                                With .FormatConditions
+                                    .Delete
+                                    .Add(xlBlanksCondition).StopIfTrue = True
+                                    ' missing
+                                    ccellval = ws_config.Range("config_categoryColorCode").Item(6).Value
+                                    If Len(ccellval) <> 0 Then
+                                        With .Add(xlCellValue, xlEqual, "/")
+                                            .StopIfTrue = True
+                                            .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                        End With
+                                    End If
+                                    ' above: 1 - 2
+                                    For i_categoryIdx = 1 To 2
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 4).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlGreater, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                    ' below: 3 - 5
+                                    For i_categoryIdx = 5 To 3 Step -1
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 4).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlLess, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                End With
+                            End If
+                        End With
+                    End With
+                    i_writeColIdx = i_writeColIdx + 1
+                End If
+                If ws_config.Range("config_ZScoreInReport").Value Then
+                    .HeaderRowRange.Item(i_writeColIdx).Value = s_workName & " Z score"
+                    With .ListColumns(i_writeColIdx).Range
+                        With .Offset(1).Resize(.Count - 1)
+                            .Formula = "=" & _
+                                "IF(" & s_workScoreFormula & " = " & enquoteStr("Missing") & ", " & _
+                                    enquoteStr("/") & ", " & _
+                                    "IFERROR((" & s_workScoreFormula & _
+                                            " - " & _
+                                            "AVERAGE(__List_internalReportTable[" & s_workName & "]))" & _
+                                            " / " & _
+                                            "STDEV.P(__List_internalReportTable[" & s_workName & "])" & _
+                                            ", " & _
+                                            "0)" & _
+                                    ")"
+                            .NumberFormat = "0%"
+                            If ws_config.Range("config_colorReport").Value Then
+                                With .FormatConditions
+                                    .Delete
+                                    .Add(xlBlanksCondition).StopIfTrue = True
+                                    ' missing
+                                    ccellval = ws_config.Range("config_categoryColorCode").Item(6).Value
+                                    If Len(ccellval) <> 0 Then
+                                        With .Add(xlCellValue, xlEqual, "/")
+                                            .StopIfTrue = True
+                                            .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                        End With
+                                    End If
+                                    ' above: 1 - 2
+                                    For i_categoryIdx = 1 To 2
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 6).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlGreater, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                    ' below: 3 - 5
+                                    For i_categoryIdx = 5 To 3 Step -1
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 6).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlLess, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                End With
+                            End If
+                        End With
+                    End With
+                    i_writeColIdx = i_writeColIdx + 1
+                End If
+            Next i_loopIdx
+            ' missing count
+            .HeaderRowRange.Item(i_writeColIdx).Value = "Missing"
+            With .ListColumns(i_writeColIdx).Range
+                With .Offset(1).Resize(.Count - 1)
+                    .Formula = "=" & _
+                        "COUNTIF(INDEX(__List_internalReportTable, " & _
+                                       "MATCH([@[Student ID]], " & _
+                                       "__List_internalReportTable[Student ID], 0), )" & _
+                                 ", " & _
+                                 enquoteStr("Missing") & ")"
+                    .NumberFormat = "General"
+                    If ws_config.Range("config_colorReport").Value Then
+                        With .FormatConditions
+                            .Delete
+                            .Add(xlBlanksCondition).StopIfTrue = True
+                            ' missing
+                            ccellval = ws_config.Range("config_categoryColorCode").Item(6).Value
+                            If Len(ccellval) <> 0 Then
+                                With .Add(xlCellValue, xlGreater, 0)
+                                    .StopIfTrue = True
+                                    .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                End With
+                            End If
+                        End With
+                    End If
+                End With
+            End With
+            i_writeColIdx = i_writeColIdx + 1
+            
+            ' final info - percentage
+            If ws_config.Range("config_finalPercentageInReport").Value Then
+                .HeaderRowRange.Item(i_writeColIdx).Value = "Final percentage"
+                With .ListColumns(i_writeColIdx).Range
+                    With .Offset(1).Resize(.Count - 1)
+                        .Formula = "=" & _
+                            getIndexMatchFormula("__List_internalReportTable[total score]", _
+                                                "[@[Student ID]]", _
+                                                "__List_internalReportTable[Student ID]")
+                        .NumberFormat = "0.00%"
+                        If ws_config.Range("config_colorReport").Value Then
+                                With .FormatConditions
+                                    .Delete
+                                    .Add(xlBlanksCondition).StopIfTrue = True
+                                    ' above: 1 - 2
+                                    For i_categoryIdx = 1 To 2
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 4).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlGreater, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                    ' below: 3 - 5
+                                    For i_categoryIdx = 5 To 3 Step -1
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 4).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlLess, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                End With
+                            End If
+                    End With
+                End With
+                i_writeColIdx = i_writeColIdx + 1
+            End If
+            ' final info - z score
+            If ws_config.Range("config_finalZScoreInReport").Value Then
+                 .HeaderRowRange.Item(i_writeColIdx).Value = "Final Z score"
+                 With .ListColumns(i_writeColIdx).Range
+                    With .Offset(1).Resize(.Count - 1)
+                        .Formula = "=" & _
+                            "(" & _
+                               getIndexMatchFormula("__List_internalReportTable[total score]", _
+                                                    "[@[Student ID]]", _
+                                                    "__List_internalReportTable[Student ID]") & _
+                                " - AVERAGE(__List_internalReportTable[total score])" & _
+                            ") / STDEV.P(__List_internalReportTable[total score])"
+                         .NumberFormat = "0%"
+                         If ws_config.Range("config_colorReport").Value Then
+                                With .FormatConditions
+                                    .Delete
+                                    .Add(xlBlanksCondition).StopIfTrue = True
+                                    ' above: 1 - 2
+                                    For i_categoryIdx = 1 To 2
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 6).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlGreater, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                    ' below: 3 - 5
+                                    For i_categoryIdx = 5 To 3 Step -1
+                                        ccellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                        bcellval = ws_config.Range("config_categoryColorCode").Item(i_categoryIdx, 6).Value
+                                        If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                            With .Add(xlCellValue, xlLess, CDbl(bcellval))
+                                                .StopIfTrue = True
+                                                .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                            End With
+                                        End If
+                                    Next i_categoryIdx
+                                End With
+                            End If
+                     End With
+                 End With
+                 i_writeColIdx = i_writeColIdx + 1
+            End If
+            ' final info - rank
+            If ws_config.Range("config_finalRankingInReport").Value Then
+                 .HeaderRowRange.Item(i_writeColIdx).Value = "Final rank"
+                 With .ListColumns(i_writeColIdx).Range
+                     With .Offset(1).Resize(.Count - 1)
+                        .Formula = "=" & _
+                            "RANK.EQ(" & _
+                                     getIndexMatchFormula("__List_internalReportTable[total score]", _
+                                                        "[@[Student ID]]", _
+                                                        "__List_internalReportTable[Student ID]") & _
+                                    ", __List_internalReportTable[total score], 0)"
+                        .NumberFormat = "0"
+                    End With
+                 End With
+                 i_writeColIdx = i_writeColIdx + 1
+            End If
+        End With
+    End With
+End Sub
+
+Sub clearReportBtn_click()
+    If isTableExists("List_ReportTable", ActiveSheet) Then
+        ActiveSheet.ListObjects("List_ReportTable").Delete
+    End If
+    If isTableExists("__List_internalReportTable", Worksheets("__InternalReportTable")) Then
+        Worksheets("__InternalReportTable").ListObjects("__List_internalReportTable").Delete
+        Dim i_loopIdx As Integer
+        i_loopIdx = 2
+        While Not IsEmpty(Worksheets("__InternalReportTable").Cells(7, i_loopIdx))
+            Worksheets("__InternalReportTable").Cells(7, i_loopIdx).Clear
+            i_loopIdx = i_loopIdx + 1
+        Wend
+    End If
+End Sub

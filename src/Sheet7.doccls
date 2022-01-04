@@ -1,0 +1,15 @@
+﻿Sub purgeNonexistenceRecordBtn_click()
+    With ListObjects("List_internal_workList").ListColumns("Work name")
+        If Not .DataBodyRange Is Nothing Then
+            With .DataBodyRange
+                Dim i_idx As Integer
+                For i_idx = .Count To 1 Step -1
+                    If Not isSheetExist(.Item(i_idx).Value) Then
+                        ListObjects("List_internal_workList").ListRows(i_idx).Delete
+                    End If
+                Next i_idx
+                .RemoveDuplicates (Array(1))
+            End With
+        End If
+    End With
+End Sub

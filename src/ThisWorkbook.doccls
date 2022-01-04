@@ -1,0 +1,306 @@
+﻿Sub GoToMainPageBtn_click()
+    Worksheets("MainPage").Activate
+End Sub
+
+
+Sub CreateHWBtn_click()
+    If ActiveSheet.Range("A1").Text <> "Unnamed Assignment" Or Left(ActiveSheet.Name, 2) = "__" Then
+        Exit Sub
+    End If
+    With ActiveSheet
+        ' metadata validation
+        ' name
+        Dim s_workName As String
+        s_workName = getWorkNameFromSheetName(.Name)
+        If Len(s_workName) = 0 Then
+            MsgBox "Work name cannot be empty", vbOKOnly + vbCritical, "Error"
+            Exit Sub
+        End If
+        If isSheetExist(s_workName) Then
+            MsgBox "Work with this name (" & s_workName & ") already exists", vbOKOnly + vbCritical, "Error"
+            Exit Sub
+        End If
+        Dim s_tableName As String
+        s_tableName = getTableNameFromWorkName(s_workName)
+        ' questions counting
+        Dim b_isTotalScoreOnly As Boolean
+        b_isTotalScoreOnly = Not IsEmpty(.Range("C8"))
+        Dim d_totalScore As Double
+        d_totalScore = 0
+        Dim i_questionCount As Integer
+        i_questionCount = 0
+        If b_isTotalScoreOnly Then
+            i_questionCount = 1
+            d_totalScore = .Range("C8").Value
+        Else
+            i_questionCount = WorksheetFunction.Min(getRowDataLen(.Range("C6")), getRowDataLen(.Range("C7")))
+            If i_questionCount = 0 Then
+                MsgBox "No question specified in metadata, or not enough data is given", vbOKOnly + vbCritical, "Error"
+                Exit Sub
+            End If
+            ' TODO: question name preserved keyword check
+            d_totalScore = WorksheetFunction.Sum(Range(.Range("C7"), .Range("C7").Offset(, i_questionCount - 1)))
+        End If
+        
+        ' user data area cleanup
+        .Shapes("ConfirmBtn").Delete
+        .Shapes("CancelBtn").Delete
+        .Name = s_workName
+        .Range("A1").Value = s_workName
+        With .Range("C6")
+            With ActiveSheet.Range(.Offset(, i_questionCount), .Offset(, i_questionCount).End(xlToRight))
+                .Clear
+                .ClearFormats
+            End With
+        End With
+        With .Range("C7")
+            With ActiveSheet.Range(.Offset(, i_questionCount), .Offset(, i_questionCount).End(xlToRight))
+                .Clear
+                .ClearFormats
+            End With
+        End With
+        .Range("D8").Clear
+        .Range("A2").Clear
+        With .Range("5:8")
+            .Validation.Delete
+        End With
+        .Range("B8").Value = "Total score:"
+        If b_isTotalScoreOnly Then
+            .Range("C6").Value = "Total"
+            .Range("C7").Value = d_totalScore
+        End If
+        .Range("C8").Value = "=SUM(C7:" & .Cells(7, 2 + i_questionCount).Address(0, 0) & ")"
+        
+        ' table building
+        Dim range_tableAnchor As Range
+        Set range_tableAnchor = .Range("A18")
+        Dim range_statAnchor As Range
+        Set range_statAnchor = .Range("B10")
+        Dim b_showPercentage As Boolean
+        b_showPercentage = (Range("config_percentageInWork").Value)
+        Dim b_showZScore As Boolean
+        b_showZScore = (Range("config_ZScoreInWork").Value)
+        Dim i_tableColumnCount As Integer
+        i_tableColumnCount = 5 + i_questionCount + IIf(b_showPercentage, 1, 0) + IIf(b_showZScore, 1, 0)
+        Dim i_tableColumnIdxToWrite As Integer
+        i_tableColumnIdxToWrite = 1
+        Dim lst_scoreTable As ListObject
+        Set lst_scoreTable = .ListObjects.Add(xlSrcRange, _
+            Range(range_tableAnchor, range_tableAnchor.Offset(, i_tableColumnCount - 1)))
+        With lst_scoreTable
+            .Name = s_tableName
+            .ListRows.Add
+            ' fixed
+            .HeaderRowRange.Item(1).Value = "Student ID"
+            ' TODO: make partial string / input student name possible
+            With .DataBodyRange.Item(1, 1)
+                .NumberFormat = "@"
+                With .FormatConditions
+                    .Delete
+                    .Add(xlBlanksCondition).StopIfTrue = True
+                    With .AddUniqueValues
+                        .DupeUnique = xlDuplicate
+                        .Interior.Color = RGB(255, 133, 133)
+                    End With
+                End With
+            End With
+            .HeaderRowRange.Item(2).Value = "Full name"
+            .DataBodyRange.Item(1, 2).Formula = "=IFNA(INDEX(List_StudentList[Full Name], " & _
+                "Match([@[Student ID]], List_StudentList[Student ID], 0)), " & s_empty & ")"
+            i_tableColumnIdxToWrite = 3
+            ' question record
+            Dim range_questionAnchor As Range
+            Set range_questionAnchor = Range("C6")
+            Dim i_questionIdx As Integer
+            For i_questionIdx = 1 To i_questionCount
+                .HeaderRowRange.Item(i_tableColumnIdxToWrite).Value = range_questionAnchor.Offset(, i_questionIdx - 1).Value
+                With .DataBodyRange.Item(1, i_tableColumnIdxToWrite)
+                    .NumberFormat = "General"
+                    With .FormatConditions
+                        .Delete
+                        If Range("config_negativeScoreInWork").Value Then
+                            .Add(xlCellValue, xlGreater, range_questionAnchor.Offset(i, i_questionIdx - 1).Value).Interior.Color = RGB(255, 133, 133)
+                        Else
+                            .Add(xlCellValue, xlNotBetween, 0, range_questionAnchor.Offset(i, i_questionIdx - 1).Value).Interior.Color = RGB(255, 133, 133)
+                        End If
+                    End With
+                End With
+                i_tableColumnIdxToWrite = i_tableColumnIdxToWrite + 1
+            Next i_questionIdx
+            ' fixed
+            .HeaderRowRange.Item(i_tableColumnIdxToWrite).Value = "Adjustment"
+            .DataBodyRange.Item(1, i_tableColumnIdxToWrite).NumberFormat = "General"
+            i_tableColumnIdxToWrite = i_tableColumnIdxToWrite + 1
+            .HeaderRowRange.Item(i_tableColumnIdxToWrite).Value = "Final grade"
+            With .DataBodyRange.Item(1, i_tableColumnIdxToWrite)
+                .NumberFormat = "General"
+                ' check available, check all filled, sum all work and adjust
+                .Formula = "=IF(LEN([@[Full name]]) = 0, " & _
+                                s_empty & ", " & _
+                                "IF(COUNTBLANK([@[" & range_questionAnchor.Value & "]]" & _
+                                               ":" & _
+                                               "[@[" & range_questionAnchor.Offset(, i_questionCount - 1) & "]]) = 0, " & _
+                                    "SUM([@[" & range_questionAnchor.Value & "]]:[@Adjustment]), " & _
+                                    enquoteStr("Incomplete") & "))"
+            End With
+            i_tableColumnIdxToWrite = i_tableColumnIdxToWrite + 1
+            ' optional extra
+            If b_showPercentage Then
+                .HeaderRowRange.Item(i_tableColumnIdxToWrite).Value = "Percentage"
+                With .DataBodyRange.Item(1, i_tableColumnIdxToWrite)
+                    .NumberFormat = "0.00%"
+                    .Formula = "=IFERROR(IF(LEN([@[Final grade]]) = 0, " & s_empty & ", [@[Final grade]] / $C$8), " & s_empty & ")"
+                    If Range("config_colorWork").Value Then
+                        With .FormatConditions
+                            .Delete
+                            .Add(xlBlanksCondition).StopIfTrue = True
+                            Dim i_categoryIdx As Integer
+                            Dim ccellval As String
+                            Dim bcellval As String
+                            ' above: 1-2
+                            For i_categoryIdx = 1 To 2
+                                ccellval = Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                bcellval = Range("config_categoryColorCode").Item(i_categoryIdx, 4).Value
+                                If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                    With .Add(xlCellValue, xlGreater, CDbl(bcellval))
+                                        .StopIfTrue = True
+                                        .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                    End With
+                                End If
+                            Next i_categoryIdx
+                            ' below: 3-5
+                            For i_categoryIdx = 5 To 3 Step -1
+                                ccellval = Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                bcellval = Range("config_categoryColorCode").Item(i_categoryIdx, 4).Value
+                                If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                    With .Add(xlCellValue, xlLess, CDbl(bcellval))
+                                        .StopIfTrue = True
+                                        .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                    End With
+                                End If
+                            Next i_categoryIdx
+                        End With
+                    End If
+                End With
+                i_tableColumnIdxToWrite = i_tableColumnIdxToWrite + 1
+            End If
+            If b_showZScore Then
+                .HeaderRowRange.Item(i_tableColumnIdxToWrite).Value = "Z Score"
+                With .DataBodyRange.Item(1, i_tableColumnIdxToWrite)
+                    .NumberFormat = "0.00%"
+                    .Formula = "=IF(" & _
+                                    range_statAnchor.Offset(3, 1).Address(1, 1) & " = 0, " & _
+                                    "0, " & _
+                                    "IF(LEN([@[Final grade]]) = 0, " & _
+                                        s_empty & ", " & _
+                                        "([@[Final grade]] - " & range_statAnchor.Offset(2, 1).Address(1, 1) & ") / " & range_statAnchor.Offset(3, 1).Address(1, 1) & _
+                                "))"
+                    If Range("config_colorWork").Value Then
+                        With .FormatConditions
+                            .Delete
+                            .Add(xlBlanksCondition).StopIfTrue = True
+                            ' Dim i_categoryIdx As Integer
+                            ' Dim ccellval As String
+                            ' Dim bcellval As String
+                            ' above: 1-2
+                            For i_categoryIdx = 1 To 2
+                                ccellval = Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                bcellval = Range("config_categoryColorCode").Item(i_categoryIdx, 6).Value
+                                If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                    With .Add(xlCellValue, xlGreater, CDbl(bcellval))
+                                        .StopIfTrue = True
+                                        .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                    End With
+                                End If
+                            Next i_categoryIdx
+                            ' below: 3-5
+                            For i_categoryIdx = 5 To 3 Step -1
+                                ccellval = Range("config_categoryColorCode").Item(i_categoryIdx).Value
+                                bcellval = Range("config_categoryColorCode").Item(i_categoryIdx, 6).Value
+                                If Len(ccellval) <> 0 And Len(bcellval) <> 0 Then
+                                    With .Add(xlCellValue, xlLess, CDbl(bcellval))
+                                        .StopIfTrue = True
+                                        .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                    End With
+                                End If
+                            Next i_categoryIdx
+                        End With
+                    End If
+                End With
+                i_tableColumnIdxToWrite = i_tableColumnIdxToWrite + 1
+            End If
+            ' fixed
+            .HeaderRowRange.Item(i_tableColumnIdxToWrite).Value = "Note"
+            .DataBodyRange.Item(1, i_tableColumnIdxToWrite).NumberFormat = "@"
+            i_tableColumnIdxToWrite = i_tableColumnIdxToWrite + 1
+        End With
+        
+        ' internal registering
+        With Worksheets("__InternalData").ListObjects("List_internal_workList").ListRows.Add
+            .Range(1) = s_workName
+            .Range(2) = s_tableName
+            .Range(3) = d_totalScore
+        End With
+        
+        ' stat writing
+        With range_statAnchor
+            ' value
+            .Offset(-1, -1).Value = "Statistics:"
+            .Value = "Class average:"
+            .Offset(1).Value = "Class sd:"
+            If Not b_isTotalScoreOnly Then
+                Dim s_formulaOfQuestion As String
+                ' Dim i_questionIdx As Integer
+                For i_questionIdx = 1 To i_questionCount
+                    s_formulaOfQuestion = "AVERAGE(" & s_tableName & "[" & range_questionAnchor.Offset(, i_questionIdx - 1).Value & "])"
+                    .Offset(, i_questionIdx).Formula = "=IFERROR(" & _
+                        "TEXT(" & s_formulaOfQuestion & ", " & enquoteStr("0.00") & ") & " & enquoteStr(" / ") & " & " & _
+                        "TEXT(" & s_formulaOfQuestion & " / " & range_questionAnchor.Offset(1, i_questionIdx - 1).Address() & ", " & _
+                            enquoteStr("0%") & "), " & _
+                        s_empty & ")"
+                    s_formulaOfQuestion = "STDEV.P(" & s_tableName & "[" & range_questionAnchor.Offset(, i_questionIdx - 1).Value & "])"
+                    .Offset(1, i_questionIdx).Formula = "=IFERROR(" & _
+                        "TEXT(" & s_formulaOfQuestion & ", " & enquoteStr("0.00") & ") & " & enquoteStr(" / ") & " & " & _
+                        "TEXT(" & s_formulaOfQuestion & " / " & range_questionAnchor.Offset(1, i_questionIdx - 1).Address() & ", " & _
+                            enquoteStr("0%") & "), " & _
+                        s_empty & ")"
+                Next i_questionIdx
+            End If
+            .Offset(2).Value = "Final average:"
+            .Offset(2, 1).Formula = "=IFERROR(AVERAGE(" & s_tableName & "[Final grade]), " & s_empty & ")"
+            .Offset(2, 2).Formula = "=" & .Offset(2, 1).Address(0, 0)
+            .Offset(3).Value = "Final sd:"
+            .Offset(3, 1).Formula = "=IFERROR(STDEV.P(" & s_tableName & "[Final grade]), " & s_empty & ")"
+            .Offset(3, 2).Formula = "=" & .Offset(3, 1).Address(0, 0)
+            .Offset(4).Value = "Submission count:"
+            .Offset(4, 1).Formula = "=SUMPRODUCT(--(LEN(" & s_tableName & "[Final grade]) > 0))"
+            .Offset(5).Value = "Number of fails:"
+            .Offset(5, 1).Formula = "=COUNTIF(" & s_tableName & "[Final grade], " & enquoteStr("<") & " & config_failAbs * C8)"
+            .Offset(6).Value = "Missing count:"
+            .Offset(6, 1).Formula = "=cell_studentCount - " & .Offset(4, 1).Address(0, 0)
+            .Offset(7, -1).Value = "Score record:"
+            ' style
+            Range(.Offset(, 1), .Offset(6, 1)).Style = Range("style_computeStyleCell").Style
+            Range(.Offset(2, 2), .Offset(3, 2)).Style = Range("style_computeStyleCell").Style
+            If b_isTotalScoreOnly Then
+                Range(.Offset(, 1), .Offset(1, 1)).Value = "/"
+            Else
+                Range(.Offset(, 1), .Offset(1, i_questionCount)).Style = Range("style_computeStyleCell").Style
+                Range(.Offset(2, 2), .Offset(3, 2)).NumberFormat = "0.00%"
+            End If
+        End With
+    End With
+End Sub
+
+Sub CancelHWBtn_click()
+    If ActiveSheet.Range("A1").Text <> "Unnamed Assignment" Or Left(ActiveSheet.Name, 2) = "__" Then
+        Exit Sub
+    End If
+    Dim s_thisSheetName As String
+    s_thisSheetName = ActiveSheet.Name
+    If s_thisSheetName <> "__AssignmentTemplate" Then
+        If Worksheets(s_thisSheetName).Delete Then
+            Worksheets("MainPage").Activate
+        End If
+    End If
+End Sub

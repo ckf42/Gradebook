@@ -1,0 +1,76 @@
+﻿Sub GoToStudentList_click()
+    Worksheets("StudentList").Activate
+End Sub
+
+Sub GoToConfigBtn_click()
+    Worksheets("Config").Activate
+End Sub
+
+Sub GoToAssignmentBtn_click()
+    Dim range_workNameCell As Range
+    Set range_workNameCell = Range("G10")
+    If Not IsEmpty(range_workNameCell.Value) Then
+        If Not isSheetExist(range_workNameCell.Value) Then
+            ' somehow invalid name is entered
+            MsgBox "Work name not found", vbOKOnly + vbCritical, "Error"
+            Worksheets("__InternalData").purgeNonexistenceRecordBtn_click
+        Else
+            Worksheets(range_workNameCell.Value).Activate
+        End If
+    End If
+End Sub
+
+Sub NewAssignmentBtn_click()
+    Dim s_proposedHWName As String
+    s_proposedHWName = "NewHW"
+    Dim i_newWorkCounter As Integer
+    i_newWorkCounter = 2
+    While isSheetExist(s_proposedHWName)
+        s_proposedHWName = "NewHW (" & i_newWorkCounter & ")"
+        i_newWorkCounter = i_newWorkCounter + 1
+    Wend
+    Dim ws_assignmentTemplate As Worksheet
+    Set ws_assignmentTemplate = Worksheets("__AssignmentTemplate")
+    Dim b_templateIsShowing As Boolean
+    b_templateIsShowing = (ws_assignmentTemplate.Visible = xlSheetVisible)
+    If Not b_templateIsShowing Then
+        ws_assignmentTemplate.Visible = xlSheetVisible
+    End If
+    ws_assignmentTemplate.Copy Before:=Worksheets("Config")
+    If Not b_templateIsShowing Then
+        ws_assignmentTemplate.Visible = xlSheetHidden
+    End If
+    ActiveSheet.Name = s_proposedHWName
+    With Worksheets(s_proposedHWName)
+        .Cells(2, 1).Value = "Please fill in the metadata form below"
+    End With
+End Sub
+
+Sub GoToReportBtn_click()
+    Worksheets("Report").Activate
+End Sub
+
+Sub GoToMetadataBtn_click()
+    Worksheets("CourseMetadata").Activate
+End Sub
+
+Sub DebugModeTriggerBtn_click()
+    Dim sarr_internalSheetName(1 To 3) As String
+    sarr_internalSheetName(1) = "__InternalData"
+    sarr_internalSheetName(2) = "__InternalReportTable"
+    sarr_internalSheetName(3) = "__AssignmentTemplate"
+    Dim b_isInDebugMode As Boolean
+    b_isInDebugMode = (Worksheets("__InternalData").Visible = xlSheetVisible)
+    If b_isInDebugMode Then
+        For Each s_internalSheetName In sarr_internalSheetName
+            Worksheets(s_internalSheetName).Visible = xlSheetHidden
+        Next s_internalSheetName
+        Worksheets("MainPage").Shapes("btn_refreshNames").Visible = msoFalse
+    Else
+        For Each s_internalSheetName In sarr_internalSheetName
+            Worksheets(s_internalSheetName).Visible = xlSheetVisible
+        Next s_internalSheetName
+        Worksheets("MainPage").Activate
+        Worksheets("MainPage").Shapes("btn_refreshNames").Visible = msoTrue
+    End If
+End Sub
