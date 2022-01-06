@@ -41,7 +41,7 @@
                                                              "ROWS(" & s_workNameFormula_absolute & ")) > 0))=" & i_requestCount
         range_reportRepeatCount.Calculate
         If Not range_reportRepeatCount.Value Then
-            MsgBox "Specified range contains duplicate workname", vbOKOnly + vbCritical, "Error"
+            MsgBox "Some works are specified twice or more", vbOKOnly + vbCritical, "Error"
             Exit Sub
         End If
         Dim d_totalWeight As Double

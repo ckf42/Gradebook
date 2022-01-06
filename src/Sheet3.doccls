@@ -1,0 +1,18 @@
+﻿Option Explicit
+
+Private Sub worksheet_change(ByVal target As Range)
+    Dim range_studentAvailability As Range
+    Set range_studentAvailability = Worksheets("StudentList").ListObjects("List_StudentList").ListColumns("Availability").DataBodyRange
+    If Not Intersect(target, range_studentAvailability) Is Nothing Then
+        Dim i_cellPtr As Integer
+        Dim ccell As Range
+        For i_cellPtr = 1 To range_studentAvailability.Count
+            Set ccell = range_studentAvailability.Item(i_cellPtr)
+            If Not IsEmpty(ccell) Then
+                Application.EnableEvents = False ' avoid trigger itself again
+                ccell.Value = WorksheetFunction.Proper(ccell.Value)
+                Application.EnableEvents = True
+            End If
+        Next i_cellPtr
+    End If
+End Sub

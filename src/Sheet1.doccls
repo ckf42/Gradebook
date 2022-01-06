@@ -21,6 +21,10 @@ Sub GoToAssignmentBtn_click()
 End Sub
 
 Sub NewAssignmentBtn_click()
+    If Worksheets("StudentList").Range("cell_studentCount").Value = 0 Then
+        MsgBox "No student available. Please ensure that at least one student has availability Yes", vbOKOnly + vbCritical, "Error"
+        Exit Sub
+    End If
     Dim s_proposedHWName As String
     s_proposedHWName = "NewHW"
     Dim i_newWorkCounter As Integer

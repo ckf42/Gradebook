@@ -1,6 +1,6 @@
-﻿Private Sub Worksheet_Change(ByVal Target As Range)
+﻿Private Sub worksheet_change(ByVal target As Range)
     ' handle category color preview
-    If Not Intersect(Target, Range("config_categoryColorCode")) Is Nothing Then
+    If Not Intersect(target, Range("config_categoryColorCode")) Is Nothing Then
         For Each ccell In Range("config_categoryColorCode")
             If IsEmpty(ccell) Then
                 ccell.Offset(, 1).FormatConditions.Delete
