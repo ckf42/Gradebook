@@ -3,4 +3,5 @@
 *.xlsx
 *.xlsm
 skeleton/xl/vbaProject.bin
+skeleton/xl/printerSettings
 build
