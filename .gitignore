@@ -2,4 +2,5 @@
 *.xls
 *.xlsx
 *.xlsm
+skeleton/xl/vbaProject.bin
 build
