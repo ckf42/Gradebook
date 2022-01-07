@@ -2,6 +2,12 @@
 
 An excel workbook for recording grades.
 
+## Download
+
+You should be able to find the current version on [the Release page](https://github.com/ckf42/Gradebook/releases).
+
+Note that this is just an excel workbook and remember to backup your record elsewhere.
+
 ## How to use
 
 Start from the `MainPage`. Should be intuitive enough.
