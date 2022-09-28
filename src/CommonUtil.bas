@@ -57,8 +57,15 @@ Function getTableNameFromWorkName(ByVal workName As String) As String
 End Function
 
 Function getIndexMatchFormula(ByVal goalArr As String, ByVal searchVal As String, ByVal searchArr As String) As String
-    ' getIndexMatchFormula = "INDEX(" & goalArr & ", MATCH(" & searchVal & ", " & searchArr & ", 0))"
     getIndexMatchFormula = "IndexMatch(" & goalArr & ", " & searchVal & ", " & searchArr & ")"
 End Function
 
+Function getStudentIDFromFullName(ByVal studentFullName As String) As Variant
+   getStudentIDFromFullName = IndexMatch(Range("List_StudentList[Student ID]"), studentFullName, Range("List_StudentList[Full Name]"))
+End Function
+
+' alias
+Function studentIDFromFullName(ByVal studentFullName As String) As Variant
+    studentIDFromFullName = getStudentIDFromFullName(studentFullName)
+End Function
 

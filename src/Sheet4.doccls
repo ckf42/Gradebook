@@ -116,9 +116,16 @@
                 s_workTableName = getTableNameFromWorkName(s_workName)
                 With .ListColumns(1 + i_loopIdx).Range
                     .Offset(1).Resize(.Count - 1).Formula = "=" & _
-                        "IFERROR(" & getIndexMatchFormula(s_workTableName & "[Final grade]", _
+                        "IFERROR(" & _
+                                 "IF(" & _
+                                     getIndexMatchFormula(s_workTableName & "[Note]", _
+                                                          "[@[Student ID]]", _
+                                                          s_workTableName & "[Student ID]") & "=" & enquoteStr("/") & ", " & _
+                                     enquoteStr("Excluded") & ", " & _
+                                     getIndexMatchFormula(s_workTableName & "[Final grade]", _
                                                           "[@[Student ID]]", _
                                                           s_workTableName & "[Student ID]") & _
+                                     ")" & _
                                  ", " & _
                                  enquoteStr("Missing") & ")"
                 End With
@@ -132,12 +139,13 @@
             .HeaderRowRange.Item(2 + i_requestCount).Value = "total score"
             With .ListColumns(2 + i_requestCount).Range
                 .Offset(1).Resize(.Count - 1).Formula = "=" & _
-                    "SUMPRODUCT(" & s_totalWeightRangeFormula_absolute & ", " & _
+                    "IFERROR(SUMPRODUCT(" & s_totalWeightRangeFormula_absolute & ", " & _
                                 s_internalScoresRange & ", " & _
                                 "1 / (" & Cells(7, 2).Address & ":" & Cells(7, 1 + i_requestCount).Address & ")" & _
-                                ")" & _
+                                "), 0)" & _
                     " / " & _
-                    "SUM(" & s_totalWeightRangeFormula_absolute & ")"
+                    "SUMPRODUCT(" & s_totalWeightRangeFormula_absolute & ", " & _
+                                "--( " & s_internalScoresRange & " <> " & enquoteStr("Excluded") & "))"
             End With
         End With
         
@@ -193,6 +201,10 @@
                                     ccellval = ws_config.Range("config_categoryColorCode").Item(6).Value
                                     If Len(ccellval) <> 0 Then
                                         With .Add(xlCellValue, xlEqual, "Missing")
+                                            .StopIfTrue = True
+                                            .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
+                                        End With
+                                        With .Add(xlCellValue, xlEqual, "Excluded")
                                             .StopIfTrue = True
                                             .Interior.Color = CLng("&H" & Right(ccellval, 2) & Mid(ccellval, 3, 2) & Left(ccellval, 2))
                                         End With
@@ -257,7 +269,7 @@
                     With .ListColumns(i_writeColIdx).Range
                         With .Offset(1).Resize(.Count - 1)
                             .Formula = "=" & _
-                                "IF(" & s_workScoreFormula & " = " & enquoteStr("Missing") & ", " & _
+                                "IF(NOT(ISNUMBER(" & s_workScoreFormula & ")), " & _
                                     enquoteStr("/") & ", " & _
                                     "IFERROR((" & s_workScoreFormula & _
                                             " - " & _
@@ -459,3 +471,4 @@ Sub clearReportBtn_click()
         Wend
     End If
 End Sub
+

@@ -279,6 +279,7 @@ Sub CreateHWBtn_click()
             .Offset(6).Value = "Missing count:"
             .Offset(6, 1).Formula = "=cell_studentCount - " & .Offset(4, 1).Address(0, 0)
             .Offset(7, -1).Value = "Score record:"
+            .Offset(7, i_tableColumnIdxToWrite - 3).Value = "Put a single " & enquoteStr("/") & " in the note to exempt the student"
             ' style
             Range(.Offset(, 1), .Offset(6, 1)).Style = Range("style_computeStyleCell").Style
             Range(.Offset(2, 2), .Offset(3, 2)).Style = Range("style_computeStyleCell").Style
@@ -304,4 +305,5 @@ Sub CancelHWBtn_click()
         End If
     End If
 End Sub
+
 

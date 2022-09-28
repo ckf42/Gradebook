@@ -22,7 +22,7 @@ The current build process is as follows:
 
 1. Build the (macro-free) skeleton `xlsm` with `buildSkeleton.bat`
 2. Open the VBA IDE in the workbook in `MS Excel`
-3. Import `src` using the `Sync Project -> Update Components` command in the [`Rubberduck` addin](https://github.com/rubberduck-vba/Rubberduck) 
+3. Import all files in `src` using the `Sync Project -> Update Components` command in the `Code Explorer` window of [`Rubberduck` addin](https://github.com/rubberduck-vba/Rubberduck) 
 4. Save the file
 
 Doing so should give you a functioning `xlsm` workbook
