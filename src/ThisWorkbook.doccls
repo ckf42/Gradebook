@@ -268,10 +268,10 @@ Sub CreateHWBtn_click()
             End If
             .Offset(2).Value = "Final average:"
             .Offset(2, 1).Formula = "=IFERROR(AVERAGE(" & s_tableName & "[Final grade]), " & s_empty & ")"
-            .Offset(2, 2).Formula = "=" & .Offset(2, 1).Address(0, 0)
+            .Offset(2, 2).Formula = "=" & .Offset(2, 1).Address(0, 0) & " / C8"
             .Offset(3).Value = "Final sd:"
             .Offset(3, 1).Formula = "=IFERROR(STDEV.P(" & s_tableName & "[Final grade]), " & s_empty & ")"
-            .Offset(3, 2).Formula = "=" & .Offset(3, 1).Address(0, 0)
+            .Offset(3, 2).Formula = "=" & .Offset(3, 1).Address(0, 0) & " / C8"
             .Offset(4).Value = "Submission count:"
             .Offset(4, 1).Formula = "=SUMPRODUCT(--(LEN(" & s_tableName & "[Final grade]) > 0))"
             .Offset(5).Value = "Number of fails:"
