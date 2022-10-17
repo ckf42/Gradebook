@@ -38,7 +38,7 @@
         range_reportRepeatCount.Formula = "=SUM(--(FREQUENCY(MATCH(" & s_workNameFormula_absolute & ", " & _
                                                                    s_workNameFormula_absolute & ", " & _
                                                                    "0), " & _
-                                                             "ROWS(" & s_workNameFormula_absolute & ")) > 0))=" & i_requestCount
+                                                             "ROW(INDIRECT(" & enquoteStr("1:") & " & COLUMNS(" & s_workNameFormula_absolute & ")))) > 0))=" & i_requestCount
         range_reportRepeatCount.Calculate
         If Not range_reportRepeatCount.Value Then
             MsgBox "Some works are specified twice or more", vbOKOnly + vbCritical, "Error"
